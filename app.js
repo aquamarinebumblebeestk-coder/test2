@@ -11,6 +11,8 @@ const CLASSES = [
 ];
 const MAX_IMAGES = 5;
 const MAX_EDGE = 2400; // 保存時の長辺の上限(px)
+// 小窓機能(ボタン・下スワイプ)の表示切り替え。iPhoneで他アプリ上に出せなかったため非表示にしている
+const MINI_ENABLED = false;
 
 // ---------- IndexedDB ----------
 const DB_NAME = 'svsup';
@@ -210,7 +212,7 @@ function updateViewer() {
   $('viewerPos').textContent = `${viewer.index + 1} / ${viewer.images.length}`;
   $('prevBtn').disabled = viewer.index === 0;
   $('nextBtn').disabled = viewer.index === viewer.images.length - 1;
-  preparePip(viewer.images[viewer.index].blob);
+  if (MINI_ENABLED) preparePip(viewer.images[viewer.index].blob);
 }
 function moveViewer(d) {
   const next = viewer.index + d;
@@ -449,6 +451,7 @@ window.addEventListener('resize', () => {
 
 $('viewerClose').onclick = closeViewer;
 $('viewerMini').onclick = openMini;
+$('viewerMini').classList.toggle('hidden', !MINI_ENABLED);
 $('prevBtn').onclick = () => moveViewer(-1);
 $('nextBtn').onclick = () => moveViewer(1);
 
@@ -463,7 +466,7 @@ $('viewer').addEventListener('touchend', (e) => {
   if (!start || window.visualViewport && window.visualViewport.scale > 1.05) return;
   const dx = e.changedTouches[0].clientX - start.x;
   const dy = e.changedTouches[0].clientY - start.y;
-  if (dy > 80 && dy > Math.abs(dx) * 1.5) openMini();
+  if (MINI_ENABLED && dy > 80 && dy > Math.abs(dx) * 1.5) openMini();
   else if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy)) moveViewer(dx < 0 ? 1 : -1);
 });
 
