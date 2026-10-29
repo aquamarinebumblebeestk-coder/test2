@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="svsup">
+<meta name="theme-color" content="#1c1a2e">
+<title>svsup</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="topbar">
+  <button id="backBtn" class="back hidden" aria-label="戻る">‹ 戻る</button>
+  <h1 id="title">svsup</h1>
+</header>
+
+<main id="main">
+  <!-- クラス選択 -->
+  <section id="classView" class="view">
+    <p id="modeHint" class="hint"></p>
+    <div id="classGrid" class="class-grid"></div>
+  </section>
+
+  <!-- 登録画面 -->
+  <section id="registerView" class="view hidden">
+    <p class="count"><span id="regCount">0</span> / 5 件登録済み</p>
+    <div id="regList" class="thumb-grid"></div>
+    <p id="regEmpty" class="empty hidden">登録済みの画像はありません</p>
+    <label id="addBtn" class="primary-btn">
+      ＋ 画像を追加
+      <input id="fileInput" type="file" accept="image/*" hidden>
+    </label>
+    <p id="fullMsg" class="hint hidden">最大5件まで登録済みです。追加するには削除してください。</p>
+  </section>
+
+  <!-- 表示画面 -->
+  <section id="displayView" class="view hidden">
+    <div id="dispList" class="thumb-grid"></div>
+    <p id="dispEmpty" class="empty hidden">登録済みの画像はありません</p>
+  </section>
+</main>
+
+<nav class="tabbar">
+  <button class="tab active" data-mode="register"><span class="tab-icon">＋</span>登録</button>
+  <button class="tab" data-mode="display"><span class="tab-icon">▦</span>表示</button>
+</nav>
+
+<!-- 拡大表示 -->
+<div id="viewer" class="viewer hidden">
+  <button id="viewerClose" class="viewer-close" aria-label="閉じる">✕</button>
+  <div class="viewer-scroll"><img id="viewerImg" alt=""></div>
+  <div id="viewerNav" class="viewer-nav">
+    <button id="prevBtn" aria-label="前へ">‹</button>
+    <span id="viewerPos"></span>
+    <button id="nextBtn" aria-label="次へ">›</button>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
