@@ -1,5 +1,5 @@
 // オフラインでも起動できるようにアプリ本体をキャッシュする
-const CACHE = 'svsup-v4';
+const CACHE = 'svsup-v5';
 const FILES = [
   './',
   'index.html',

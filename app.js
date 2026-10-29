@@ -455,19 +455,69 @@ $('viewerMini').classList.toggle('hidden', !MINI_ENABLED);
 $('prevBtn').onclick = () => moveViewer(-1);
 $('nextBtn').onclick = () => moveViewer(1);
 
-// 左右スワイプで前後の画像へ、下スワイプで小窓へ
+// 左右スワイプで前後の画像へ、上下スワイプで閉じる(小窓有効時は下スワイプで小窓へ)
+const SWIPE_CLOSE_DISTANCE = 100;
 let touchStart = null;
+
+function isZoomed() {
+  return window.visualViewport && window.visualViewport.scale > 1.05;
+}
+function setDragOffset(dy, animate) {
+  const img = $('viewerImg');
+  img.style.transition = animate ? 'transform 0.2s ease-out' : '';
+  $('viewer').style.transition = animate ? 'background-color 0.2s ease-out' : '';
+  img.style.transform = dy ? `translateY(${dy}px)` : '';
+  const alpha = Math.max(0.2, 1 - Math.abs(dy) / (window.innerHeight * 0.6));
+  $('viewer').style.backgroundColor = dy ? `rgba(0,0,0,${alpha})` : '';
+}
+function swipeClose(dy) {
+  // 指を離した方向へ画像を飛ばしてから閉じる
+  setDragOffset(Math.sign(dy) * window.innerHeight, true);
+  $('viewer').style.backgroundColor = 'rgba(0,0,0,0)';
+  setTimeout(() => {
+    closeViewer();
+    setDragOffset(0, false);
+  }, 200);
+}
+
 $('viewer').addEventListener('touchstart', (e) => {
-  touchStart = e.touches.length === 1 ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : null;
+  const onButton = e.target.closest('button');
+  touchStart = e.touches.length === 1 && !onButton && !isZoomed()
+    ? { x: e.touches[0].clientX, y: e.touches[0].clientY, dir: null }
+    : null;
+}, { passive: true });
+$('viewer').addEventListener('touchmove', (e) => {
+  if (!touchStart) return;
+  if (e.touches.length !== 1) {
+    // ピンチが始まったらスワイプは取りやめ
+    touchStart = null;
+    setDragOffset(0, true);
+    return;
+  }
+  const dx = e.touches[0].clientX - touchStart.x;
+  const dy = e.touches[0].clientY - touchStart.y;
+  if (!touchStart.dir && Math.abs(dx) + Math.abs(dy) > 10) {
+    touchStart.dir = Math.abs(dy) > Math.abs(dx) ? 'v' : 'h';
+  }
+  if (touchStart.dir === 'v' && !(MINI_ENABLED && dy > 0)) setDragOffset(dy, false);
 }, { passive: true });
 $('viewer').addEventListener('touchend', (e) => {
   const start = touchStart;
   touchStart = null;
-  if (!start || window.visualViewport && window.visualViewport.scale > 1.05) return;
+  if (!start) return;
   const dx = e.changedTouches[0].clientX - start.x;
   const dy = e.changedTouches[0].clientY - start.y;
-  if (MINI_ENABLED && dy > 80 && dy > Math.abs(dx) * 1.5) openMini();
-  else if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy)) moveViewer(dx < 0 ? 1 : -1);
+  if (start.dir === 'v') {
+    if (MINI_ENABLED && dy > 80) openMini();
+    else if (Math.abs(dy) > SWIPE_CLOSE_DISTANCE) swipeClose(dy);
+    else setDragOffset(0, true);
+  } else if (start.dir === 'h' && Math.abs(dx) > 60) {
+    moveViewer(dx < 0 ? 1 : -1);
+  }
+});
+$('viewer').addEventListener('touchcancel', () => {
+  touchStart = null;
+  setDragOffset(0, true);
 });
 
 // ---------- イベント ----------
