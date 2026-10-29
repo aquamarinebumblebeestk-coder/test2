@@ -314,3 +314,13 @@ button.primary-btn { border: 0; }
   color: #2a1f00;
   font-weight: 700;
 }
+
+.pip-video {
+  position: fixed;
+  left: 0;
+  bottom: 0;
+  width: 2px;
+  height: 2px;
+  opacity: 0.01;
+  pointer-events: none;
+}

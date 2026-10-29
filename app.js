@@ -210,6 +210,7 @@ function updateViewer() {
   $('viewerPos').textContent = `${viewer.index + 1} / ${viewer.images.length}`;
   $('prevBtn').disabled = viewer.index === 0;
   $('nextBtn').disabled = viewer.index === viewer.images.length - 1;
+  preparePip(viewer.images[viewer.index].blob);
 }
 function moveViewer(d) {
   const next = viewer.index + d;
@@ -223,7 +224,132 @@ function closeViewer() {
   $('viewerImg').removeAttribute('src');
   if (viewer.url) URL.revokeObjectURL(viewer.url);
   viewer.url = null;
+  if (!isInPip()) stopPip();
 }
+
+// ---------- ピクチャ・イン・ピクチャ(他のアプリの上に小窓表示) ----------
+// iPhoneでアプリの外に小窓を出せるのは動画だけなので、画像を数秒の静止動画に変換して
+// その動画をピクチャ・イン・ピクチャで再生する。変換は拡大表示を開いた時点で済ませておく
+// (小窓ボタンを押した瞬間に再生を始めないとiPhoneが許可しないため)。
+const PIP_MAX_EDGE = 1280;
+const PIP_SECONDS = 2;
+const pipVideo = $('pipVideo');
+pipVideo.muted = true;
+const pipSupported = typeof MediaRecorder !== 'undefined'
+  && typeof HTMLCanvasElement.prototype.captureStream === 'function'
+  && (document.pictureInPictureEnabled || typeof pipVideo.webkitSetPresentationMode === 'function');
+const pip = { token: 0, url: null, ready: false };
+
+function isInPip() {
+  return document.pictureInPictureElement === pipVideo
+    || pipVideo.webkitPresentationMode === 'picture-in-picture';
+}
+
+function setPipReady(ready) {
+  pip.ready = ready;
+  $('viewerMini').textContent = ready || !pipSupported ? '⧉ 小窓' : '⧉ 準備中…';
+}
+
+async function imageToVideo(blob) {
+  const bitmap = await createImageBitmap(blob);
+  const scale = Math.min(1, PIP_MAX_EDGE / Math.max(bitmap.width, bitmap.height));
+  const canvas = document.createElement('canvas');
+  // 動画のサイズは偶数にする
+  canvas.width = Math.max(2, Math.round(bitmap.width * scale / 2) * 2);
+  canvas.height = Math.max(2, Math.round(bitmap.height * scale / 2) * 2);
+  const ctx = canvas.getContext('2d');
+  let frame = 0;
+  const draw = () => {
+    ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    // 画面が変化しないとフレームが記録されないため、目に見えない1pxだけ毎回変える
+    ctx.fillStyle = `rgba(0,0,0,${(frame++ % 2) * 0.02})`;
+    ctx.fillRect(0, 0, 1, 1);
+  };
+  draw();
+
+  const stream = canvas.captureStream(30);
+  const mimeType = ['video/mp4', 'video/webm;codecs=vp8', 'video/webm']
+    .find((t) => MediaRecorder.isTypeSupported(t));
+  const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+  const chunks = [];
+  recorder.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
+  const stopped = new Promise((resolve) => { recorder.onstop = resolve; });
+  recorder.start();
+  const timer = setInterval(draw, 1000 / 30);
+  await new Promise((resolve) => setTimeout(resolve, PIP_SECONDS * 1000));
+  clearInterval(timer);
+  recorder.stop();
+  await stopped;
+  stream.getTracks().forEach((t) => t.stop());
+  bitmap.close();
+  if (chunks.length === 0) throw new Error('動画を作成できませんでした');
+  return new Blob(chunks, { type: recorder.mimeType || mimeType || 'video/webm' });
+}
+
+async function preparePip(blob) {
+  const token = ++pip.token;
+  setPipReady(false);
+  if (!pipSupported) return;
+  try {
+    const video = await imageToVideo(blob);
+    if (token !== pip.token) return; // 変換中に別の画像に切り替わった
+    const oldUrl = pip.url;
+    pip.url = URL.createObjectURL(video);
+    pipVideo.src = pip.url;
+    await new Promise((resolve, reject) => {
+      pipVideo.onloadeddata = resolve;
+      pipVideo.onerror = () => reject(new Error('動画を再生できませんでした'));
+    });
+    if (oldUrl) URL.revokeObjectURL(oldUrl);
+    await pipVideo.play();
+    if (token === pip.token) setPipReady(true);
+  } catch (err) {
+    console.warn('PiP準備失敗', err);
+    if (token === pip.token) setPipReady(true); // アプリ内の小窓で代用できるようにする
+  }
+}
+
+function stopPip() {
+  pip.token++;
+  pipVideo.pause();
+  pipVideo.removeAttribute('src');
+  pipVideo.load();
+  if (pip.url) URL.revokeObjectURL(pip.url);
+  pip.url = null;
+  setPipReady(false);
+}
+
+// ボタンやスワイプの操作中に同期的に呼ぶこと
+function enterPip() {
+  if (!pipSupported || !pip.ready || !pipVideo.src) return false;
+  try {
+    pipVideo.play();
+    if (document.pictureInPictureEnabled && pipVideo.requestPictureInPicture) {
+      pipVideo.requestPictureInPicture().catch((err) => {
+        console.warn('PiP開始失敗', err);
+        minimizeViewer();
+      });
+    } else {
+      pipVideo.webkitSetPresentationMode('picture-in-picture');
+    }
+    return true;
+  } catch (err) {
+    console.warn('PiP開始失敗', err);
+    return false;
+  }
+}
+
+function openMini() {
+  if (!enterPip()) minimizeViewer();
+}
+
+// 小窓(PiP)の「戻る」ボタンでアプリに戻ったときは拡大表示を開いておく
+pipVideo.addEventListener('leavepictureinpicture', () => {
+  if (!viewer.url) stopPip();
+});
+pipVideo.addEventListener('webkitpresentationmodechanged', () => {
+  if (pipVideo.webkitPresentationMode === 'inline' && !viewer.url) stopPip();
+});
 
 // ---------- 小窓 ----------
 const MINI_MIN_W = 100;
@@ -322,7 +448,7 @@ window.addEventListener('resize', () => {
 });
 
 $('viewerClose').onclick = closeViewer;
-$('viewerMini').onclick = minimizeViewer;
+$('viewerMini').onclick = openMini;
 $('prevBtn').onclick = () => moveViewer(-1);
 $('nextBtn').onclick = () => moveViewer(1);
 
@@ -337,7 +463,7 @@ $('viewer').addEventListener('touchend', (e) => {
   if (!start || window.visualViewport && window.visualViewport.scale > 1.05) return;
   const dx = e.changedTouches[0].clientX - start.x;
   const dy = e.changedTouches[0].clientY - start.y;
-  if (dy > 80 && dy > Math.abs(dx) * 1.5) minimizeViewer();
+  if (dy > 80 && dy > Math.abs(dx) * 1.5) openMini();
   else if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy)) moveViewer(dx < 0 ? 1 : -1);
 });
 
