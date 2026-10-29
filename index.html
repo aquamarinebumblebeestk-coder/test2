@@ -38,6 +38,25 @@
     <p id="fullMsg" class="hint hidden">最大5件まで登録済みです。追加するには削除してください。</p>
   </section>
 
+  <!-- バックアップ画面 -->
+  <section id="backupView" class="view hidden">
+    <div class="card">
+      <h2>バックアップを保存</h2>
+      <p class="desc">登録済みの画像をすべて1つのファイルにまとめて保存します。「ファイル」アプリやiCloud Driveに保存しておくと、アプリを入れ直したときや機種変更のときに戻せます。</p>
+      <button id="exportBtn" class="primary-btn">バックアップを保存</button>
+    </div>
+    <div class="card">
+      <h2>バックアップから復元</h2>
+      <p class="desc">保存したバックアップファイルを読み込みます。<b>現在の登録画像はすべて置き換わります。</b></p>
+      <label class="secondary-btn">
+        ファイルを選んで復元
+        <input id="importInput" type="file" hidden>
+      </label>
+    </div>
+    <p id="backupStatus" class="hint"></p>
+    <p class="hint">バージョン <span id="versionLabel">-</span></p>
+  </section>
+
   <!-- 表示画面 -->
   <section id="displayView" class="view hidden">
     <div id="dispList" class="thumb-grid"></div>
@@ -48,10 +67,12 @@
 <nav class="tabbar">
   <button class="tab active" data-mode="register"><span class="tab-icon">＋</span>登録</button>
   <button class="tab" data-mode="display"><span class="tab-icon">▦</span>表示</button>
+  <button class="tab" data-mode="backup"><span class="tab-icon">⇅</span>バックアップ</button>
 </nav>
 
 <!-- 拡大表示 -->
 <div id="viewer" class="viewer hidden">
+  <button id="viewerMini" class="viewer-mini" aria-label="小窓表示">⧉ 小窓</button>
   <button id="viewerClose" class="viewer-close" aria-label="閉じる">✕</button>
   <div class="viewer-scroll"><img id="viewerImg" alt=""></div>
   <div id="viewerNav" class="viewer-nav">
@@ -59,6 +80,19 @@
     <span id="viewerPos"></span>
     <button id="nextBtn" aria-label="次へ">›</button>
   </div>
+</div>
+
+<!-- 小窓表示 -->
+<div id="mini" class="mini hidden">
+  <img id="miniImg" alt="" draggable="false">
+  <button id="miniClose" class="mini-close" aria-label="小窓を閉じる">✕</button>
+  <div id="miniResize" class="mini-resize" aria-label="サイズ変更"></div>
+</div>
+
+<!-- 更新のお知らせ -->
+<div id="updateBar" class="update-bar hidden">
+  <span>新しいバージョンがあります</span>
+  <button id="updateBtn">更新する</button>
 </div>
 
 <script src="app.js"></script>

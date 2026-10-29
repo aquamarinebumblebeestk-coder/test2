@@ -94,16 +94,24 @@ function urlFor(blob) {
   return u;
 }
 
+function hideAllViews() {
+  ['classView', 'registerView', 'displayView', 'backupView'].forEach((id) => $(id).classList.add('hidden'));
+}
+
 async function showClassList() {
   revokeUrls();
   state.classId = null;
+  hideAllViews();
+  $('backBtn').classList.add('hidden');
+  if (state.mode === 'backup') {
+    $('title').textContent = 'バックアップ';
+    $('backupView').classList.remove('hidden');
+    return;
+  }
   $('title').textContent = state.mode === 'register' ? '登録' : '表示';
   $('modeHint').textContent = state.mode === 'register'
     ? 'クラスを選んで画像を登録・削除します'
     : 'クラスを選んで画像を表示します';
-  $('backBtn').classList.add('hidden');
-  $('registerView').classList.add('hidden');
-  $('displayView').classList.add('hidden');
   $('classView').classList.remove('hidden');
 
   const counts = await countAll();
@@ -188,6 +196,7 @@ async function renderDisplay() {
 const viewer = { images: [], index: 0, url: null };
 
 function openViewer(images, index) {
+  hideMini();
   viewer.images = images;
   viewer.index = index;
   $('viewerNav').classList.toggle('hidden', images.length < 2);
@@ -210,25 +219,126 @@ function moveViewer(d) {
 }
 function closeViewer() {
   $('viewer').classList.add('hidden');
+  hideMini();
   $('viewerImg').removeAttribute('src');
   if (viewer.url) URL.revokeObjectURL(viewer.url);
   viewer.url = null;
 }
 
+// ---------- 小窓 ----------
+const MINI_MIN_W = 100;
+const MINI_MARGIN = 8;
+const mini = $('mini');
+const miniPos = loadMiniPos();
+
+function loadMiniPos() {
+  try {
+    const saved = JSON.parse(localStorage.getItem('svsup-mini'));
+    if (saved && saved.w) return saved;
+  } catch {}
+  return { x: null, y: null, w: 160 };
+}
+function saveMiniPos() {
+  try { localStorage.setItem('svsup-mini', JSON.stringify(miniPos)); } catch {}
+}
+
+// 画面外にはみ出さないよう位置とサイズを調整して反映
+function placeMini() {
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  miniPos.w = Math.max(MINI_MIN_W, Math.min(miniPos.w, vw - MINI_MARGIN * 2));
+  mini.style.width = miniPos.w + 'px';
+  const h = mini.offsetHeight;
+  if (miniPos.x === null) {
+    miniPos.x = vw - miniPos.w - 12;
+    miniPos.y = vh - h - 90;
+  }
+  miniPos.x = Math.max(MINI_MARGIN, Math.min(miniPos.x, vw - miniPos.w - MINI_MARGIN));
+  // ノッチ(セーフエリア)の下に収める
+  const top = parseFloat(getComputedStyle(document.querySelector('.topbar')).paddingTop) + MINI_MARGIN;
+  miniPos.y = Math.max(top, Math.min(miniPos.y, vh - h - MINI_MARGIN));
+  mini.style.left = miniPos.x + 'px';
+  mini.style.top = miniPos.y + 'px';
+}
+
+function minimizeViewer() {
+  if (!viewer.url) return;
+  $('viewer').classList.add('hidden');
+  $('miniImg').src = viewer.url;
+  mini.classList.remove('hidden');
+  if ($('miniImg').complete) placeMini();
+  else $('miniImg').onload = placeMini;
+  placeMini();
+}
+function expandMini() {
+  mini.classList.add('hidden');
+  $('viewer').classList.remove('hidden');
+}
+function hideMini() {
+  mini.classList.add('hidden');
+  $('miniImg').removeAttribute('src');
+}
+
+// ドラッグで移動、動かさずに離したらタップ扱いで拡大表示に戻す
+let drag = null;
+mini.addEventListener('pointerdown', (e) => {
+  if (e.target === $('miniClose')) return;
+  drag = {
+    resize: e.target === $('miniResize'),
+    sx: e.clientX, sy: e.clientY,
+    x: miniPos.x, y: miniPos.y, w: miniPos.w,
+    moved: false,
+  };
+  mini.setPointerCapture(e.pointerId);
+});
+mini.addEventListener('pointermove', (e) => {
+  if (!drag) return;
+  const dx = e.clientX - drag.sx;
+  const dy = e.clientY - drag.sy;
+  if (Math.abs(dx) + Math.abs(dy) > 6) drag.moved = true;
+  if (drag.resize) {
+    // 左下の角をつかんで左に引くと大きくなる(右端は固定)
+    const w = Math.max(MINI_MIN_W, Math.min(drag.w - dx, drag.x + drag.w - MINI_MARGIN));
+    miniPos.x = drag.x + drag.w - w;
+    miniPos.w = w;
+  } else {
+    miniPos.x = drag.x + dx;
+    miniPos.y = drag.y + dy;
+  }
+  placeMini();
+});
+function endDrag() {
+  if (!drag) return;
+  const tapped = !drag.moved && !drag.resize;
+  drag = null;
+  saveMiniPos();
+  if (tapped) expandMini();
+}
+mini.addEventListener('pointerup', endDrag);
+mini.addEventListener('pointercancel', () => { drag = null; saveMiniPos(); });
+$('miniClose').onclick = closeViewer;
+window.addEventListener('resize', () => {
+  if (!mini.classList.contains('hidden')) placeMini();
+});
+
 $('viewerClose').onclick = closeViewer;
+$('viewerMini').onclick = minimizeViewer;
 $('prevBtn').onclick = () => moveViewer(-1);
 $('nextBtn').onclick = () => moveViewer(1);
 
-// 左右スワイプで前後の画像へ
-let touchX = null;
+// 左右スワイプで前後の画像へ、下スワイプで小窓へ
+let touchStart = null;
 $('viewer').addEventListener('touchstart', (e) => {
-  touchX = e.touches.length === 1 ? e.touches[0].clientX : null;
+  touchStart = e.touches.length === 1 ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : null;
 }, { passive: true });
 $('viewer').addEventListener('touchend', (e) => {
-  if (touchX === null || window.visualViewport && window.visualViewport.scale > 1.05) return;
-  const dx = e.changedTouches[0].clientX - touchX;
-  if (Math.abs(dx) > 60) moveViewer(dx < 0 ? 1 : -1);
-  touchX = null;
+  const start = touchStart;
+  touchStart = null;
+  if (!start || window.visualViewport && window.visualViewport.scale > 1.05) return;
+  const dx = e.changedTouches[0].clientX - start.x;
+  const dy = e.changedTouches[0].clientY - start.y;
+  if (dy > 80 && dy > Math.abs(dx) * 1.5) minimizeViewer();
+  else if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy)) moveViewer(dx < 0 ? 1 : -1);
 });
 
 // ---------- イベント ----------
@@ -251,11 +361,133 @@ $('fileInput').onchange = async (e) => {
 
 $('backBtn').onclick = showClassList;
 
+// ---------- バックアップ ----------
+const BACKUP_FORMAT = 'svsup-backup';
+
+const blobToDataURL = (blob) => new Promise((resolve, reject) => {
+  const r = new FileReader();
+  r.onload = () => resolve(r.result);
+  r.onerror = () => reject(r.error);
+  r.readAsDataURL(blob);
+});
+
+function setBackupStatus(msg) {
+  $('backupStatus').textContent = msg;
+}
+
+$('exportBtn').onclick = async () => {
+  const all = await tx('readonly', (s) => s.getAll());
+  if (all.length === 0) {
+    alert('登録済みの画像がありません');
+    return;
+  }
+  setBackupStatus('バックアップを作成中…');
+  // 大きな文字列を1つ作らないよう、画像ごとに分けてBlobにする
+  const parts = [`{"format":"${BACKUP_FORMAT}","version":1,"createdAt":${Date.now()},"images":[`];
+  for (let i = 0; i < all.length; i++) {
+    const item = all[i];
+    const data = await blobToDataURL(item.blob);
+    parts.push((i ? ',' : '') + JSON.stringify({ classId: item.classId, createdAt: item.createdAt, data }));
+  }
+  parts.push(']}');
+  const d = new Date();
+  const stamp = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+  const file = new File(parts, `svsup-backup-${stamp}.json`, { type: 'application/json' });
+
+  try {
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      // iPhoneでは共有シートから「"ファイル"に保存」を選ぶ
+      await navigator.share({ files: [file] });
+    } else {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(file);
+      a.download = file.name;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+    }
+    setBackupStatus(`${all.length}件の画像をバックアップしました`);
+  } catch (err) {
+    setBackupStatus(err.name === 'AbortError' ? 'キャンセルしました' : 'バックアップに失敗しました: ' + err.message);
+  }
+};
+
+$('importInput').onchange = async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  let backup;
+  try {
+    backup = JSON.parse(await file.text());
+  } catch {
+    alert('バックアップファイルを読み込めませんでした');
+    return;
+  }
+  if (!backup || backup.format !== BACKUP_FORMAT || !Array.isArray(backup.images)) {
+    alert('svsupのバックアップファイルではありません');
+    return;
+  }
+  const validIds = new Set(CLASSES.map((c) => c.id));
+  const perClass = {};
+  const items = [];
+  for (const img of backup.images) {
+    if (!validIds.has(img.classId) || typeof img.data !== 'string') continue;
+    perClass[img.classId] = (perClass[img.classId] || 0) + 1;
+    if (perClass[img.classId] > MAX_IMAGES) continue;
+    const blob = await (await fetch(img.data)).blob();
+    items.push({ classId: img.classId, blob, createdAt: img.createdAt || Date.now() });
+  }
+  if (items.length === 0) {
+    alert('復元できる画像がありません');
+    return;
+  }
+  if (!confirm(`${items.length}件の画像を復元します。\n現在の登録画像はすべて置き換わります。よろしいですか？`)) return;
+  try {
+    await tx('readwrite', (s) => {
+      s.clear();
+      items.forEach((item) => s.add(item));
+    });
+    setBackupStatus(`${items.length}件の画像を復元しました`);
+  } catch (err) {
+    alert('復元に失敗しました: ' + err.message);
+  }
+};
+
+// ---------- 更新チェック ----------
+// アプリは常に最新のファイルを読み込むが、iPhoneは開いたままの画面を再読み込みしないため、
+// 新しいバージョンが公開されていたら更新ボタンを出す。登録画像は端末内に残るので更新しても消えない。
+let loadedVersion = null;
+
+async function fetchVersion() {
+  try {
+    const res = await fetch('version.json', { cache: 'no-store' });
+    return (await res.json()).version;
+  } catch {
+    return null; // オフライン時など
+  }
+}
+
+async function checkUpdate() {
+  const v = await fetchVersion();
+  if (!v) return;
+  if (loadedVersion === null) {
+    loadedVersion = v;
+    $('versionLabel').textContent = v;
+  } else if (v !== loadedVersion) {
+    $('updateBar').classList.remove('hidden');
+  }
+}
+
+$('updateBtn').onclick = () => location.reload();
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') checkUpdate();
+});
+checkUpdate();
+
 document.querySelectorAll('.tab').forEach((tab) => {
   tab.onclick = () => {
     document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t === tab));
     state.mode = tab.dataset.mode;
-    closeViewer();
+    if (!$('viewer').classList.contains('hidden')) minimizeViewer();
     showClassList();
   };
 });
